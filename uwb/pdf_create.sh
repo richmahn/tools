@@ -7,7 +7,7 @@
 #
 #  Contributors:
 #  Jesse Griffin <jesse@distantshores.org>
-#  Richard Mahn <rmahn@getmealticket.com>
+#  Richard Mahn <richard_mahn@wycliffeassociates.org>
 #  Caleb Maclennan <caleb@alerque.com>
 
 
@@ -135,8 +135,8 @@ book_export () {
     BOOK_NAME=$(grep -m 1 'Chapter 01 Comp' $BOOK_HTML | cut -f 5 -d '>' | cut -d 'C' -f 1)
     # Create PDF
     pandoc --template=$TEMPLATE -S --toc --toc-depth=2 -V toc-depth=1 \
-        --latex-engine=xelatex \
-        -V documentclass=memoir \
+        --latex-engine="xelatex" \
+        -V documentclass="memoir" \
         -V geometry='hmargin=2cm' \
         -V geometry='vmargin=2cm' \
         -V title="$BOOK_NAME Text and Notes" \
