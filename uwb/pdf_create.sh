@@ -123,7 +123,7 @@ book_export () {
     echo "See $BOOK_PDF"
 
     # Remove tmp files
-#    rm -f /tmp/$$.*
+    rm -f /tmp/$$.*
 }
 
 book_export $1
