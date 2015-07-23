@@ -101,7 +101,7 @@ book_export () {
     sed -i '/<h2.*Comprehension Questions and Answers<\/h2>/d' $BOOK_HTML
     awk '/sectionedit1.*id=.*chapter-/ && !x {print "<h0>Comprehension Questions and Answers</h0>"; x=1} 1' $BOOK_HTML > $BOOK_TMP && mv $BOOK_TMP $BOOK_HTML
 
-    # increase all headers by one so that our new <h0> headers are <h1> (sections) and <h1> headers becomes <h2> (subheaders) etc.
+    # increase all headers by one so that our new <h0> headers are <h1> (sections) and <h1> headers becomes <h2> (subsections) etc.
     sed -i 's/<\(\/\)\{0,1\}h3/<\1h4/g' $BOOK_HTML
     sed -i 's/<\(\/\)\{0,1\}h2/<\1h3/g' $BOOK_HTML
     sed -i 's/<\(\/\)\{0,1\}h1/<\1h2/g' $BOOK_HTML
