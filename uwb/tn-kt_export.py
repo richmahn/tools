@@ -209,22 +209,25 @@ def gettN(page, f):
     tN = []
     text = tNre.search(page).group(0)
     page_url = u'https://door43.org/{0}'.format(f.split('pages/')[1].rstrip('.txt'))
-    for i in text.split('\n'):
-        if ( not i.strip() or 'Comprehension Questions' in i or u'>>]]**' in i
-            or u'<<]]**' in i or u'====' in i
-            or i.startswith((u'{{tag>', u'~~', u'**[[', u'\\\\')) ):
+    for (i, item) in text.split('\n'):
+        if ( not item.strip() or 'Comprehension Questions' in item or u'>>]]**' in item
+            or u'<<]]**' in item or u'====' in item
+            or item.startswith((u'{{tag>', u'~~', u'**[[', u'\\\\')) ):
             continue
-        item = {'ref': u''}
-        tNtermse = tNtermre.search(i)
+        if i == 0:
+            item = {'ref': u'Connecting Statement'}
+        else:
+            item = {'ref': u'General Information'}
+        tNtermse = tNtermre.search(item)
         if tNtermse:
             item['ref'] = tNtermse.group(1)
-        tNtextse = tNtextre.search(i)
+        tNtextse = tNtextre.search(item)
         if not tNtextse:
-            tNtextse = tNtextre2.search(i)
+            tNtextse = tNtextre2.search(item)
         try:
             item_text = tNtextse.group(1).strip()
         except AttributeError:
-            item_text = i
+            item_text = item
         item['text'] = getHTML(item_text)
         tN.append(item)
     return tN
@@ -237,10 +240,10 @@ def runKT(lang, today):
         kt = getKT(f)
         if kt:
             keyterms.append(kt)
-    for i in keyterms:
+    for item in keyterms:
         try:
-            i['aliases'] = list(set([x for x in ktaliases[i['id']]
-                                                          if x != i['term']]))
+            item['aliases'] = list(set([x for x in ktaliases[item['id']]
+                                                          if x != item['term']]))
         except KeyError:
             # this just means no aliases were found
             pass
@@ -265,7 +268,6 @@ def runtN(lang, today):
                 continue
             for f in glob.glob('{0}/{1}/*.txt'.format(book_path, chapter)):
                 if 'home.txt' in f: continue
-                if '00/intro.txt' in f: continue
                 frame = getFrame(f, book)
                 if frame: 
                     frames.append(frame)
@@ -341,12 +343,12 @@ def getQandA(text):
 
 def fixRefs(refs):
     newrefs = []
-    for i in refs:
+    for item in refs:
         sep = u'-'
         try:
-            chp, verses = i.split(u':')
+            chp, verses = item.split(u':')
         except:
-            print i
+            print item
         if u',' in verses:
             sep = u','
         v_list = verses.split(sep)
