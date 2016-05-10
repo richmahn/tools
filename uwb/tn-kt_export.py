@@ -21,11 +21,18 @@ import json
 import glob
 import codecs
 import datetime
+import inspect
+from subprocess import *
 
+# Let's include ../general_tools as a place we can import python files from
+cmd_subfolder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"../general_tools")))
+if cmd_subfolder not in sys.path:
+    sys.path.insert(0, cmd_subfolder)
+import dw2md # from general_tools/dw2md.py
 
 root = '/var/www/vhosts/door43.org/httpdocs/data/gitrepo'
 pages = os.path.join(root, 'pages')
-api_v2 = '/var/www/vhosts/api.unfoldingword.org/httpdocs/ts/txt/2/'
+api_v2 = '/var/www/vhosts/api.unfoldingword.org/httpdocs/test/ts/txt/2/'
 ktaliases = {}
 twdict = {}
 def_titles = ['Definition', 'Facts', 'Description']
@@ -40,12 +47,17 @@ cfre = re.compile(ur'See also.*', re.UNICODE)
 examplesre = re.compile(ur'===== Examples from the Bible stories.*',
     re.UNICODE | re.DOTALL)
 extxtre = re.compile(ur'\*\* (.*)', re.UNICODE)
-fridre = re.compile(ur'[0-9][0-9][0-9]?/[0-9][0-9][0-9]?', re.UNICODE)
+fridre = re.compile(ur'[0-9][0-9][0-9]?/[^\.]+', re.UNICODE)
 tNre = re.compile(ur'==== Translation Notes.*', re.UNICODE | re.DOTALL)
-itre = re.compile(ur'==== Important Terms: ====(.*?)====', re.UNICODE | re.DOTALL)
+tWre = re.compile(ur'==== translationWords: ====(.*?)====', re.UNICODE | re.DOTALL)
 tNtermre = re.compile(ur' \*\*(.*?)\*\*', re.UNICODE)
 tNtextre = re.compile(ur' ?[–-] ?(.*)', re.UNICODE)
 tNtextre2 = re.compile(ur'\* (.*)', re.UNICODE)
+headerLevel1 = re.compile(ur'^====== (.*?) ======\s*?\n(.*?)($|======)', re.UNICODE | re.DOTALL)
+headerLevel2 = re.compile(ur'^===== (.*?) =====\s*?\n(.*?)($|=====)', re.UNICODE | re.DOTALL)
+headerLevel3 = re.compile(ur'^==== (.*?) ====\s*?\n(.*?)($|====)', re.UNICODE | re.DOTALL)
+headerLevel4 = re.compile(ur'^=== (.*?) ===\s*?\n(.*?)($|===)', re.UNICODE | re.DOTALL)
+headerLevel5 = re.compile(ur'^== (.*?) ==\s*?\n(.*?)($|==)', re.UNICODE | re.DOTALL)
 pubre = re.compile(ur'tag>.*publish.*', re.UNICODE)
 suggestre = re.compile(ur'===== Translation Suggestions:? =====(.*?)[=(][TS]?',
     re.UNICODE | re.DOTALL)
@@ -68,7 +80,7 @@ def getKT(f):
     kt['id'] = f.rsplit('/', 1)[1].replace('.txt', '')
     ktse = ktre.search(page)
     if not ktse:
-        print 'Term not found for {}'.format(kt['id'])
+        print 'Term not found for {0} in {1}'.format(kt['id'], f)
         return False
     kt['term'] = ktse.group(1).strip()
     kt['sub'] = getKTSub(page)
@@ -161,14 +173,38 @@ def getDump(j):
     return json.dumps(j, sort_keys=True)
 
 def getFrame(f, book):
+    print f
     page = codecs.open(f, 'r', encoding='utf-8').read()
     if not pubre.search(page): return False
-    frame = {}
     getAliases(page, f)
-    frame['id'] = fridre.search(f).group(0).strip().replace('/', '-')
-    frame['tn'] = gettN(page, f)
-    gettWList(frame['id'], page, book)
+
+    chapter = os.path.basename(os.path.dirname(f))
+    if not chapter.isdigit(): return False
+
+    chunk = os.path.splitext(os.path.basename(f))[0]
+    frame = {}
+    frame['id'] = '{0}-{1}'.format(chapter, chunk)
+
+    if int(chapter) == 0:
+        if chunk == 'intro' or chunk == 'tatopics' or chunk == 'words':
+            frame['text'] = getPageText(page)
+        else:
+            return False
+    if int(chunk) == 0:
+        frame['text'] = getPageText(page)
+    else:
+        frame['tn'] = gettN(page, f)
+        gettWList(frame['id'], page, book)
+    print frame
+    exit(1)
     return frame
+
+def getPageText(page):
+    page = dw2md.convert(page)
+    page = re.sub(ur'^(~~|\{\{tag>|<<\*\*|\\\\).*(\n|$)', ur'', page, flags=re.UNICODE|re.MULTILINE)
+    page = re.sub(ur'(\s*\n)*$', ur'\n', page, flags=re.UNICODE)
+    item = {'text': page}
+    return item
 
 def gettWList(frid, page, book):
     # Get book, chapter and id, create chp in twdict if it doesn't exist
@@ -179,7 +215,7 @@ def gettWList(frid, page, book):
         twdict[book][chp] = []
     # Get list of tW from page
     try:
-        text = itre.search(page).group(1).strip()
+        text = tWre.search(page).group(1).strip()
     except AttributeError:
         print "Terms not found for {0} {1}".format(book, frid)
         return
@@ -194,7 +230,7 @@ def gettWList(frid, page, book):
 
 def getAliases(page, f):
     try:
-        text = itre.search(page).group(1).strip()
+        text = tWre.search(page).group(1).strip()
     except AttributeError:
         print "Terms not found for {0}".format(f)
         return
@@ -207,29 +243,54 @@ def getAliases(page, f):
 
 def gettN(page, f):
     tN = []
-    text = tNre.search(page).group(0)
-    page_url = u'https://door43.org/{0}'.format(f.split('pages/')[1].rstrip('.txt'))
-    for (i, item) in text.split('\n'):
-        if ( not item.strip() or 'Comprehension Questions' in item or u'>>]]**' in item
-            or u'<<]]**' in item or u'====' in item
-            or item.startswith((u'{{tag>', u'~~', u'**[[', u'\\\\')) ):
-            continue
-        if i == 0:
-            item = {'ref': u'Connecting Statement'}
-        else:
-            item = {'ref': u'General Information'}
-        tNtermse = tNtermre.search(item)
-        if tNtermse:
-            item['ref'] = tNtermse.group(1)
-        tNtextse = tNtextre.search(item)
-        if not tNtextse:
-            tNtextse = tNtextre2.search(item)
-        try:
-            item_text = tNtextse.group(1).strip()
-        except AttributeError:
-            item_text = item
-        item['text'] = getHTML(item_text)
-        tN.append(item)
+    tNse = tNre.search(page)
+    if tNse:
+        text = tNse.group(0)
+        page_url = u'https://door43.org/{0}'.format(f.split('pages/')[1].rstrip('.txt'))
+        for i in text.split('\n'):
+            if ( not i.strip() or 'Comprehension Questions' in i or u'>>]]**' in i
+                or u'<<]]**' in i or u'====' in i
+                or i.startswith((u'{{tag>', u'~~', u'**[[', u'\\\\')) ):
+                continue
+            item = {'ref': u''}
+            tNtermse = tNtermre.search(i)
+            if tNtermse:
+                item['ref'] = tNtermse.group(1)
+            tNtextse = tNtextre.search(i)
+            if not tNtextse:
+                tNtextse = tNtextre2.search(i)
+            try:
+                item_text = tNtextse.group(1).strip()
+            except AttributeError:
+                item_text = i
+            item['text'] = getHTML(item_text)
+            tN.append(item)
+    return tN
+
+def gettNChapterIntro(page, f):
+    tN = []
+    tNse = tNre.search(page)
+    if tNse:
+        text = tNse.group(0)
+        page_url = u'https://door43.org/{0}'.format(f.split('pages/')[1].rstrip('.txt'))
+        for i in text.split('\n'):
+            if ( not i.strip() or 'Comprehension Questions' in i or u'>>]]**' in i
+                or u'<<]]**' in i or u'====' in i
+                or i.startswith((u'{{tag>', u'~~', u'**[[', u'\\\\')) ):
+                continue
+            item = {'ref': u''}
+            tNtermse = tNtermre.search(i)
+            if tNtermse:
+                item['ref'] = tNtermse.group(1)
+            tNtextse = tNtextre.search(i)
+            if not tNtextse:
+                tNtextse = tNtextre2.search(i)
+            try:
+                item_text = tNtextse.group(1).strip()
+            except AttributeError:
+                item_text = i
+            item['text'] = getHTML(item_text)
+            tN.append(item)
     return tN
 
 def runKT(lang, today):
@@ -240,10 +301,10 @@ def runKT(lang, today):
         kt = getKT(f)
         if kt:
             keyterms.append(kt)
-    for item in keyterms:
+    for i in keyterms:
         try:
-            item['aliases'] = list(set([x for x in ktaliases[item['id']]
-                                                          if x != item['term']]))
+            i['aliases'] = list(set([x for x in ktaliases[i['id']]
+                                                          if x != i['term']]))
         except KeyError:
             # this just means no aliases were found
             pass
@@ -269,7 +330,7 @@ def runtN(lang, today):
             for f in glob.glob('{0}/{1}/*.txt'.format(book_path, chapter)):
                 if 'home.txt' in f: continue
                 frame = getFrame(f, book)
-                if frame: 
+                if frame:
                     frames.append(frame)
 
         frames.sort(key=lambda x: x['id'])
@@ -343,18 +404,27 @@ def getQandA(text):
 
 def fixRefs(refs):
     newrefs = []
-    for item in refs:
+    for i in refs:
         sep = u'-'
         try:
-            chp, verses = item.split(u':')
+            chp, verses = i.split(u':')
         except:
-            print item
+            print i
         if u',' in verses:
             sep = u','
         v_list = verses.split(sep)
         for v in v_list:
             newrefs.append(u'{0}-{1}'.format(chp.zfill(2), v.zfill(2)))
     return newrefs
+
+def runCommand(c):
+    '''
+    Runs a command in a shell.  Returns output and return code of command.
+    '''
+    command = shlex.split(c)
+    com = Popen(command, shell=False, stdout=PIPE, stderr=PIPE)
+    comout = ''.join(com.communicate()).strip()
+    return comout, com.returncode
 
 
 if __name__ == '__main__':
